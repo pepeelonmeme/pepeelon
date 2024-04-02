@@ -1,0 +1,25 @@
+{
+	"name": "pepe_token",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.ts",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devDependencies": {
+		"ts-node": "^10.9.2",
+		"typescript": "^5.4.3"
+	},
+	"dependencies": {
+		"@metaplex-foundation/mpl-token-metadata": "^3.2.1",
+		"@metaplex-foundation/umi": "^0.9.1",
+		"@metaplex-foundation/umi-bundle-defaults": "^0.9.1",
+		"@metaplex-foundation/umi-web3js-adapters": "^0.9.1",
+		"@solana/spl-token": "^0.4.3",
+		"@solana/web3.js": "^1.91.3",
+		"bs58": "^5.0.0"
+	}
+}
