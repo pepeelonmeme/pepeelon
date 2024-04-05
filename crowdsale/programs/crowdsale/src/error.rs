@@ -34,4 +34,7 @@ pub enum CrowdSaleError {
 
     #[msg("Invalid Amount: Amount exceeds the supply")]
     ExceedsSupply,
+
+    #[msg("Invalid Amount: Reach maximum amount can buy")]
+    InvalidMaximumCanBuy,
 }

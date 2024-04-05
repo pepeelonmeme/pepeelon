@@ -7,18 +7,15 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{transfer, Mint, Token, TokenAccount, Transfer},
 };
-
 mod constants;
-mod error;
+mod errors;
 
-use crate::{constants::*, error::*};
+use crate::{constants::*, errors::*};
 
-// This is your program's public key and it will update
-// automatically when you build the project.
-declare_id!("RWRusdKFaiDdu8ht7bTkWmh8uJtPSEAuMYUxKuKd1gU");
+declare_id!("98otN1KwVKtKaWHjsje2UqhCh4K86VNKTs6eZtK6UKe4");
 
 #[program]
-mod crowdsale {
+pub mod crowdsale {
     use super::*;
 
     pub fn create_crowdsale(ctx: Context<CreateCrowdsale>) -> Result<()> {
@@ -82,13 +79,14 @@ mod crowdsale {
             amount,
         )?;
 
-        crowdsale_account.supply = amount;
+        crowdsale_account.supply += amount;
 
         Ok(())
     }
 
-    pub fn buy_token(ctx: Context<BuyToken>, amount: u64) -> Result<()> {
+    pub fn buy_token(ctx: Context<BuyToken>, authority: Pubkey, amount: u64) -> Result<()> {
         let crowdsale_account = &mut ctx.accounts.crowdsale_account;
+        let user_info_account = &mut ctx.accounts.user_info_account;
         let clock = Clock::get()?;
 
         if !is_sale_active(crowdsale_account, clock)? {
@@ -99,9 +97,17 @@ mod crowdsale {
             return err!(CrowdSaleError::InvalidPrice);
         }
 
+        if crowdsale_account.authority != authority {
+            return err!(CrowdSaleError::Unauthorized);
+        }
+
+        if user_info_account.sol_amount + amount > crowdsale_account.max_price {
+            return err!(CrowdSaleError::InvalidMaximumCanBuy);
+        }
+
         let reward_amount = calculate_reward_amount(crowdsale_account, amount)?;
 
-        if reward_amount + crowdsale_account.supply > crowdsale_account.supply {
+        if reward_amount + crowdsale_account.sold_amount > crowdsale_account.supply {
             return err!(CrowdSaleError::ExceedsSupply);
         }
 
@@ -132,6 +138,8 @@ mod crowdsale {
         )?;
 
         crowdsale_account.sold_amount += reward_amount;
+        user_info_account.sol_amount += amount;
+        user_info_account.bought_amount += reward_amount;
 
         Ok(())
     }
@@ -201,7 +209,7 @@ pub struct CreateCrowdsale<'info> {
         init, 
         payer = payer, 
         space =8 + std::mem::size_of::<CrowdSale>(),
-        seeds=[CROWDSALE_SEED],
+        seeds=[CROWDSALE_SEED, payer.key().as_ref()],
         bump    
     )]
     pub crowdsale_account: Account<'info, CrowdSale>,
@@ -229,7 +237,7 @@ pub struct CreateCrowdsale<'info> {
 pub struct SettingCrowdsale<'info> {
     #[account(
         mut,
-        seeds=[CROWDSALE_SEED],
+        seeds=[CROWDSALE_SEED, payer.key().as_ref()],
         bump    
     )]
     pub crowdsale_account: Account<'info, CrowdSale>,
@@ -243,7 +251,7 @@ pub struct SettingCrowdsale<'info> {
 pub struct TokenSale<'info> {
     #[account(
         mut,
-        seeds=[CROWDSALE_SEED],
+        seeds=[CROWDSALE_SEED, payer.key().as_ref()],
         bump    
     )]
     pub crowdsale_account: Account<'info, CrowdSale>,
@@ -275,10 +283,11 @@ pub struct TokenSale<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(authority: Pubkey)]
 pub struct BuyToken<'info> {
     #[account(
         mut,
-        seeds=[CROWDSALE_SEED],
+        seeds=[CROWDSALE_SEED, authority.key().as_ref()],
         bump    
     )]
     pub crowdsale_account: Account<'info, CrowdSale>,
@@ -297,6 +306,14 @@ pub struct BuyToken<'info> {
     )]
     pub user_token_account: Account<'info, TokenAccount>,
 
+    #[account(
+        init_if_needed,
+        space=8 + std::mem::size_of::<UserInfo>(),
+        seeds=[USER_INFO_SEED, payer.key().as_ref()],
+        bump,
+        payer = payer
+    )]
+    pub user_info_account: Account<'info, UserInfo>,
     pub mint: Account<'info, Mint>,
 
     #[account(mut)]
@@ -310,8 +327,8 @@ pub struct BuyToken<'info> {
 pub struct Withdraw<'info> {
     #[account(
         mut,
-        seeds=[CROWDSALE_SEED],
-        bump,
+        seeds=[CROWDSALE_SEED, payer.key().as_ref()],
+        bump    
     )]
     pub crowdsale_account: Account<'info, CrowdSale>,
 
@@ -320,6 +337,7 @@ pub struct Withdraw<'info> {
 
     pub system_program: Program<'info, System>,
 }
+
 
 #[account]
 pub struct CrowdSale {
@@ -333,18 +351,26 @@ pub struct CrowdSale {
     sold_amount: u64,
 }
 
-fn calculate_reward_amount(crowdsale_account: &CrowdSale, amount: u64) -> Result<u64> {
+#[account]
+pub struct UserInfo {
+    bought_amount: u64,
+    sol_amount: u64,
+}
+
+// helper function
+
+pub fn calculate_reward_amount(crowdsale_account: &CrowdSale, amount: u64) -> Result<u64> {
     let sol_per_token = LAMPORTS_PER_SOL
         .checked_div(crowdsale_account.price)
         .unwrap();
     Ok(amount.checked_mul(sol_per_token).unwrap())
 }
 
-fn is_sale_active(crowdsale_account: &CrowdSale, clock: Clock) -> Result<bool> {
+pub fn is_sale_active(crowdsale_account: &CrowdSale, clock: Clock) -> Result<bool> {
     let current_time = clock.unix_timestamp as u64;
     Ok(crowdsale_account.start <= current_time && current_time <= crowdsale_account.end)
 }
 
-fn is_price_valid(crowdsale_account: &CrowdSale, amount: u64) -> bool {
+pub fn is_price_valid(crowdsale_account: &CrowdSale, amount: u64) -> bool {
     crowdsale_account.min_price <= amount && amount <= crowdsale_account.max_price
 }
