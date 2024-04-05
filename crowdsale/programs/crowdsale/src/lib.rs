@@ -15,7 +15,7 @@ use crate::{constants::*, errors::*};
 declare_id!("98otN1KwVKtKaWHjsje2UqhCh4K86VNKTs6eZtK6UKe4");
 
 #[program]
-pub mod crowdsale {
+mod crowdsale {
     use super::*;
 
     pub fn create_crowdsale(ctx: Context<CreateCrowdsale>) -> Result<()> {
@@ -359,18 +359,18 @@ pub struct UserInfo {
 
 // helper function
 
-pub fn calculate_reward_amount(crowdsale_account: &CrowdSale, amount: u64) -> Result<u64> {
+fn calculate_reward_amount(crowdsale_account: &CrowdSale, amount: u64) -> Result<u64> {
     let sol_per_token = LAMPORTS_PER_SOL
         .checked_div(crowdsale_account.price)
         .unwrap();
     Ok(amount.checked_mul(sol_per_token).unwrap())
 }
 
-pub fn is_sale_active(crowdsale_account: &CrowdSale, clock: Clock) -> Result<bool> {
+fn is_sale_active(crowdsale_account: &CrowdSale, clock: Clock) -> Result<bool> {
     let current_time = clock.unix_timestamp as u64;
     Ok(crowdsale_account.start <= current_time && current_time <= crowdsale_account.end)
 }
 
-pub fn is_price_valid(crowdsale_account: &CrowdSale, amount: u64) -> bool {
+fn is_price_valid(crowdsale_account: &CrowdSale, amount: u64) -> bool {
     crowdsale_account.min_price <= amount && amount <= crowdsale_account.max_price
 }
